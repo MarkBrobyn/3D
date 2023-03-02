@@ -1,0 +1,1135 @@
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Data Visualization - three.js - webgl</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #000;
+				font-family:Monospace;
+				font-size:13px;
+				//text-align:center;
+				font-weight: bold;
+
+				background-color: #fff;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#info {
+				color:#000;
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+
+			}
+
+			a {
+				color: blue;		
+			}
+
+			
+			#header {
+			   position: relative;
+			   top: 10px;
+			   left: 10px;
+			   width: 590px;
+			   height: 80px;
+			   background-color: #ccc;
+			}
+
+			#menu {
+			   position: relative;
+			   top: 20px;
+			   left: 10px;
+			   width: 180px;
+			   height: 400px;
+			   background-color: #ccc;
+			   color: #222;
+			   font-family:sans-serif;
+				font-size:14px;
+				text-align:center;
+				font-weight: bold;
+			}
+			
+			#menu header {
+			 background-color: #333;
+			 color: #eee;
+			}
+			#container {
+			   position: relative;
+			   top: -380px;
+			   left: 200px;
+			}
+
+			#HUDmain {
+			  position: absolute;
+			  left: 3px;
+			  right: 3px;
+			  top: 3px;
+			  z-index: 10;
+			  border: red 1px solid;
+			  border-radius: 9px;
+			  padding: 6px;
+			  //width: 99%;
+			  height: 120px;
+			  overflow: auto;
+			  background-color: white;
+			  opacity: 0.8;
+			  filter: alpha(opacity=80);
+			  visibility: hidden;
+			}
+
+            #HUDfoot {
+			  position: absolute;
+			  left: 3px;
+			  right: 3px;
+			  bottom: 3px;
+			  z-index: 10;
+			  border: red 1px solid;
+			  border-radius: 9px;
+			  padding: 6px;
+			  //width: 99%;
+			  height: 70px;
+			  overflow: auto;
+			  background-color: white;
+			  opacity: 0.8;
+			  filter: alpha(opacity=80);
+			  visibility: visible;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div id="mycanvas"></div>
+        <div id="HUDmain">HUDmain</div>
+        <div id="HUDfoot"></div>
+	<script src="js/three.min.js"></script>
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/KeyboardState.js"></script>
+		<script src="js/THREEx.FullScreen.js"></script>
+<!--
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+-->
+		<script>
+
+/*  CLEAN UP
+
+remove mapGroup
+
+*/	
+// Globals
+var VERBOSE=false;// verbose/debug mode
+var lastGot=''; // used by getArea()
+
+// --- update interval ---
+var getAreasInterval=1500; // used by getAreas()
+
+
+var map=''; // var holding computer usage returned from avail.mdx.ac.uk by getArea() and used by gotArea()
+var DEGREE=Math.PI/180;
+ 
+// for picking
+var targetList = [];
+var projector;
+var mouse = { x: 0, y: 0 };
+
+// for reveal pan
+var lookAtX=0;
+var lookAtY=0;
+var lookAtZ=0;
+var planes=[];
+var computers=[];
+var computerlabels=[];
+var arealabels=[];
+
+// ----------------------------------------
+var A={}; //avail object
+A.c={}; //computers
+A.a=[]; //areas
+A.f=[]; //floors
+A.p={}; //preferences
+A.ai={}; //areas array associative index
+A.s={}; // stats
+A.s.u=0; // total used
+A.s.f=0; // total free
+// labels
+A.l={}; // labels
+A.l.c={}; // computer labels
+A.l.c.visibility='visible'; // hidden | visible
+
+var labelsFloors=new THREE.Group();
+var labelsComputers=new THREE.Group();
+
+// ----------------------------------------
+var PREF=A.p;
+PREF.baseColor=0x8888ff;
+PREF.areaColour=0x00ff00;
+PREF.baseTiles=44;
+PREF.baseGridSize=440;
+PREF.fogDark=0x444466;
+PREF.cubeSize=2;
+PREF.cSize=2; //computer cube dimension
+PREF.cGap=PREF.cSize*4; //computer cube dimension
+//PREF.floorXScale=1;
+PREF.floorYScale=35;
+PREF.floorGap=0.1;
+PREF.floorThickness=0.2;
+PREF.floorOpacity=0.5;
+PREF.doGotAreaMsg=true;
+PREF.doAllGot=true;
+PREF.colourUsed=0xff0000;
+PREF.colourFree=0x00ff00;
+PREF.statusColour={Used:PREF.colourUsed,Free:PREF.colourFree};
+// ----------------------------------------
+var HUD =function(){
+//var HUDObj =function(){
+  var e;
+  this.init=function(a){
+    e=document.getElementById(a);
+  };
+  this.display=function(a){
+    if(a) e.style.visibility='visible';
+	else  e.style.visibility='hidden';
+  };
+  this.msg=function(a){
+    e.innerHTML=a+'<br>'+e.innerHTML;
+  };
+    this.msgTimed=function(a){
+    e.innerHTML=msToTime(Date.now())+'&nbsp;&nbsp;&nbsp;'+a+'<br>'+e.innerHTML;
+  };
+  this.alert=function(a){
+    e.innerHTML=a;
+  };
+  this.alertTimed=function(a){
+    e.innerHTML=msToTime(Date.now())+'&nbsp;&nbsp;&nbsp;'+a;
+  };
+  function msToTime(s) {
+    var ms = s % 1000;
+    s = (s - ms) / 1000;
+    var secs = s % 60;
+    if(secs<10) secs='0'+secs;
+    s = (s - secs) / 60;
+    var mins = s % 60;
+    if(mins<10) mins='0'+mins;
+    var hrs = ((s - mins) / 60) % 24;
+    return hrs + ':' + mins + ':' + secs;// + '.' + ms;
+  }
+};
+
+var HUDmain=new HUD();
+HUDmain.init('HUDmain');
+
+function doHUD(f) {
+ HUDmain.display(f);
+}
+
+var HUDfoot=new HUD();
+HUDfoot.init('HUDfoot');
+//HUDfoot.msg('Click on a computer to pick it');
+HUDfoot.msg('A:toggle animation - speed: 0 - very slow | 1 - slow | 2 - medium | 3 - fast');
+HUDfoot.msg('F:toggle floors &nbsp&nbsp&nbsp C: toggle computers &nbsp&nbsp&nbsp L: toggle floor labels  &nbsp&nbsp&nbsp K: toggle computer labels');
+HUDfoot.msg('M:toggle full screen &nbsp&nbsp&nbsp O: birds eye view &nbsp&nbsp&nbsp R: reset to angled view');
+HUDfoot.msg('H:toggle this panel &nbsp&nbsp&nbsp D:toggle data panel &nbsp&nbsp&nbsp B:toggle base grid');
+HUDfoot.msg('Mouse:  left - rotate | center - zoom | right - pan');
+function doHELP(f) {
+ HUDfoot.display(f);
+}
+// ----------------------------------------
+var areas=A.a; // array to hold areas 
+			  // TODO get from server
+			  PREF.floorThickness=0.2;
+			  //PREF.floorThickness=40;
+
+// areas used by getAreas
+
+areas.push({code:'HESLBAOA01',name:'Open access Macs',floor:-1,w:120,l:220,x:110,yz:60,rotation:270,colour:0xfff200,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESLGFOA01',name:'Open access',floor:0,w:90,l:220,x:110,yz:45,rotation: 270,colour:0xff2222,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESLGFLSS12A',name:'SG12a',floor:0,w:50,l:60,x:195,yz:125,rotation: 180,colour:0xff2222,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESLGFLSS12B',name:'SG12b',floor:0,w:50,l:60,x:140,yz:125,rotation: 180,colour:0xff2222,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESLGFLSS13A',name:'SG13a',floor:0,w:50,l:60,x:85,yz:125,rotation: 180,colour:0xff2222,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESLGFLSS13B',name:'SG13b',floor:0,w:50,l:60,x:30,yz:125,rotation: 180,colour:0xff2222,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01OA01L',name:'Open access - left',floor:1,w:100,l:160,x:-70,yz:28,rotation: 135,colour:0x43b7eb,xro:0,yro:0,ro:0,cx:-20,cy:-20});
+
+areas.push({code:'HESL01LSS106',name:'S106',floor:1,w:50,l:105,x:165,yz:125,rotation: 90,colour:0x43b7eb,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01LSS107',name:'S107',floor:1,w:50,l:50,x:85,yz:125,rotation: 180,colour:0x43b7eb,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01LSS108',name:'S108',floor:1,w:50,l:50,x:30,yz:125,rotation: 180,colour:0x43b7eb,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01LSS111',name:'S111 Financial lab',floor:1,w:45,l:30,x:-70,yz:28,rotation: 135,colour:0x43b7eb,xro:100,yro:-27.5,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01LSS112',name:'S112',floor:1.0,w:50,l:100,x:-70,yz:28,rotation: 135,colour:0x43b7eb,xro:135,yro:25,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL01LSS118',name:'S118',floor:1,w:80,l:100,x:-70,yz:28,rotation:135,colour:0x43b7eb,xro:-125,yro:0,ro:90,cx:0,cy:0});
+
+areas.push({code:'HESL02OA01L',name:'Open - left',floor:2,w:100,l:160,x:-70,yz:28,rotation:135,colour:0x84bd00,xro:0,yro:0,ro:0,cx:-25,cy:-60});
+
+areas.push({code:'HESL02LSS206',name:'S206',floor:2,w:40,l:50,x:195,yz:125,rotation:180,colour:0x84bd00,xro:0,yro:0,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL02LSS216',name:'S216',floor:2,w:45,l:50,x:-70,yz:28,rotation: 135,colour:0x84bd00,xro:110,yro:-27.5,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL02LSS217',name:'S217',floor:2.0,w:50,l:100,x:-70,yz:28,rotation: 135,colour:0x84bd00,xro:135,yro:25,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL03LSS304',name:'S304',floor:3,w:45,l:50,x:-70,yz:28,rotation: 135,colour:0xfc4c00,xro:110,yro:-27.5,ro:0,cx:0,cy:0});
+
+areas.push({code:'HESL03LSS305',name:'S305',floor:3,w:50,l:100,x:-70,yz:28,rotation: 135,colour:0xfc4c00,xro:135,yro:25,ro:0,cx:0,cy:0});
+
+
+
+
+
+// ADD ADDITIONAL DATA TO AREAS
+for(var i=0;i<areas.length;i++) {
+  A.ai[areas[i].code]=i;
+  areas[i].gotArea=false; // whether
+  areas[i].cols=0;
+  areas[i].rows=0;
+  areas[i].used=0;
+  areas[i].free=0; 
+  areas[i].border=1;
+  areas[i].rOff=0;
+  areas[i].cOff=0;
+  areas[i].rScale=1;
+  areas[i].cScale=1;	
+}
+
+/* ********************************************************************************* */
+/*  GET AREA CODE                                                                    */
+/*                                                                                   */
+function getArea() {
+  // add in set areas function
+  var a;
+  if(typeof getArea.next=='undefined'){getArea.next=0;}
+  if(getArea.next>=areas.length)getArea.next=0;
+  //console.log('getArea.next : '+getArea.next );
+  a=areas[getArea.next].code;
+  
+  if(document.getElementById("areaUpdated")) // ! areaUpdated is id of js script
+    {
+      document.getElementById("areaUpdated").parentNode.removeChild(document.getElementById("areaUpdated"));
+	} 
+  var headID = document.getElementsByTagName("head")[0];         
+  var newScript = document.createElement('script');
+
+  newScript.type = 'text/javascript'; // IE no likey application/javascript
+  newScript.id = 'areaUpdated';
+  newScript.onload=function(){gotArea(a);}; // anonymous function taking a parameter
+  newScript.onreadystatechange = function () {
+    if(this.readyState == 'complete' || this.readyState == 'loaded') {
+      gotArea(a);
+    }
+  };
+  newScript.src = 'https://avail.mdx.ac.uk:8090/map/'+a+'/map.js'; // + qss; forget IE
+  lastGot=areas[getArea.next].code; // lastGot is global
+  headID.appendChild(newScript);
+  
+  
+  //gotArea(areas[getArea.next].code);
+  getArea.next++;
+}
+
+function gotArea(a){
+  // A.c associative array object of computers
+  var statusChange=false;
+  var addedMsg='';
+  var gotAreaInitial=!(areas[A.ai[a]].gotArea); // is this first got area?
+  var msg=''; // msg for HUD
+  // need these
+  var c;//={}; //computer
+  var cd=[]; // computer details
+  var ca=map.split(';'); // computers array from map data  
+  var used=0;
+  var free=0;   
+  var c;//={}; //computer
+  var o; // object for status colour change
+  if(gotAreaInitial) {
+    var cols=0;
+    var rows=0; 
+    var ac=areas[A.ai[a]].cs=[]; // an array under an area to hold all computers in area by name
+  }
+  
+  for(var i=0;i<ca.length;i++) {
+	cd=ca[i].split(':'); // computer details
+    if(gotAreaInitial) {   
+	  c=A.c[cd[0]]={};
+	  //HUDmain.msg(c);
+      ac.push(cd[0]); //A.a.cs = an area's computers
+      c.name=cd[0];
+	  c.status=cd[1];	
+      c.c=parseInt(cd[2].split(',')[0]); //col
+	  c.r=parseInt(cd[2].split(',')[1]); //row  
+	  cols=c.c>cols?c.c:cols;
+	  rows=c.r>rows?c.r:rows;
+    }
+    c=A.c[cd[0]];
+    // set colour to status
+	if(c.status!=cd[1]&&!gotAreaInitial) { // status has changed
+	  c.status=cd[1];	
+	  statusChange=true;
+      HUDmain.msgTimed(A.c[c.name].name+' ('+A.a[A.ai[a]].name+') is now '+cd[1]);
+	  o=scene.getObjectById(A.c[c.name].id);
+      o.material.color.setHex(PREF.statusColour[cd[1]]);
+	}
+  }
+  
+  if(gotAreaInitial) {
+	  areas[A.ai[a]].cols=cols;
+      areas[A.ai[a]].rows=rows;	
+	  areas[A.ai[a]].gotArea=true; // gotArea flag now true
+	  addedMsg=addComputersToScene(a);
+	  render();
+  }
+
+  if(PREF.doGotAreaMsg&&(PREF.doAllGot||!(areas[A.ai[a]].gotArea))) {
+    HUDmain.msgTimed('Got data for '+A.a[A.ai[a]].name);
+	if(''!=addedMsg)HUDmain.msgTimed(addedMsg);
+  }
+  
+  if(statusChange) render();
+
+}
+
+function getAreas() {
+  getArea();
+  setInterval(getArea,getAreasInterval); // Global getAreasInterval  
+}
+getAreas(); // Global areas[]
+
+/* END GET AREA CODE                                                                 */
+/* ********************************************************************************* */
+
+var maps=[];
+var PCs={};// PCs object 
+PCs.PCa=[];//array of pc objects
+
+function parseMap(m) {
+  var pc={};
+  var pca=[];
+  var p=m.split(';');
+  for(var i=0;i<p.length;i++) {
+	pca=p[i].split(':');
+	pc={name:pca[0],status:pca[1],c:parseInt(pca[2].split(',')[0]),r:parseInt(pca[2].split(',')[1])};
+	PCs.PCa.push(pc);
+  }
+}
+
+var DOcontrols = true;
+var DObaseGrid = true;
+var DOspikes = false;
+var DOplane = false;
+var DOfloors = true;
+var DOcubes = false;
+
+var SHOWfloors=true;
+var SHOWcomputers=true;
+var SHOWarealabels=true;
+var SHOWcomputerlabels=true;
+
+var DOHUD = false;// if default is 
+//true change CSS to visibility: visible
+//false change CSS to visibility: hidden
+var DOHELP = true;// if default is
+//true change CSS to visibility: visible
+//false change CSS to visibility: hidden
+
+var container, stats;
+var camera, controls, scene, renderer, keyboard;
+var canvasWidth=400;
+var canvasHeight=400;
+
+var floorXScale = 1;
+var floorYScale = PREF.floorYScale;
+var floorZScale = 1;
+
+init();
+render();
+
+function addLabel(t,group,l,n){ // text, object group, label, name of object
+	var sprite = makeTextSprite(t,l.ss,l.b,l.fs); //text, label sprite size, label border, font size
+	sprite.scale.set( 20, 20,0 ); // imageWidth, imageHeight
+	scene.add(sprite);
+	var o = group.getObjectByName(n,true);
+	sprite.position.set( o.position.x, o.position.y+8, o.position.z);
+}
+
+function addLabelArea(n,x,y,z,sc,ss,b,fs){ // name,x,y,z,scale, sprite size,border,font size
+	var sprite = makeTextSprite(n,ss,b,fs); //text, label sprite size, label border, font size
+	sprite.scale.set(sc,sc,0 ); // imageWidth, imageHeight
+	scene.add(sprite);
+	sprite.position.set(x ,y  ,z );
+	arealabels.push(sprite);
+	sprite.visible=SHOWarealabels;
+}
+
+function addLabelComputer(t,o,g,l,a){ // text, object group, label, name of object
+	var sprite = makeTextSprite(t,l.ss,l.b,l.fs); //text, label sprite size, label border, font size
+	sprite.scale.set( l.s, l.s,0 ); // imageWidth, imageHeight
+	scene.add(sprite);
+	var x,y,z,s,c;
+	s=Math.sin((360-(a.r+a.ro))*DEGREE); // need 360- as position.rotation rotates in opposite direction
+	c=Math.cos((360-(a.r+a.ro))*DEGREE);
+	x=(o.position.x*c)-(o.position.z*s)+g.position.x;
+	y=o.position.y+a.y;
+	z=(o.position.x*s)+(o.position.z*c)+g.position.z;
+	sprite.position.set(x ,y  ,z );
+	computerlabels.push(sprite);
+	sprite.visible=SHOWcomputerlabels;
+}
+
+function makeTextSprite(t,s,b,fs) { // text, sprite size, border, font size
+	var x=0;
+	var y=0;
+	var textCanvas = document.createElement('canvas');
+	textCanvas.width = s;
+	textCanvas.height = s;
+
+	var textContext = textCanvas.getContext('2d');
+	textContext.font = fs+'px Arial';
+	//find width of text
+	var metrics = textContext.measureText(t);
+	var textWidth = metrics.width;
+	if(textWidth<s) {x=(s-textWidth)/2} // center text horizontally
+	if(fs<s) {y=(s-fs)/2}  // center text vertically	
+	// set background colour and alpha of sprite
+	textContext.fillStyle='rgba(255,255,255,0.5)';	
+	textContext.beginPath();
+    textContext.moveTo(x,y);
+    textContext.lineTo(x,y+fs);
+    textContext.lineTo(s-x,y+fs);
+    textContext.lineTo(s-x,y);
+    textContext.lineTo(x,y);
+    textContext.closePath();
+    textContext.fill();
+
+if(VERBOSE) {
+	textContext.strokeStyle="#000000";
+	textContext.beginPath();
+    textContext.moveTo(0,0);
+    textContext.lineTo(0,s);
+    textContext.lineTo(s,s);
+    textContext.lineTo(s,0);
+    textContext.lineTo(0,0);
+    textContext.closePath();
+	textContext.stroke();
+}
+	
+	if (b) textContext.stroke(); // default is black, fillstyle alpha is at 0.5
+	// set background colour and alpha of text
+	textContext.fillStyle='rgba(0,0,255,0.9)';	// for text
+	textContext.fillText(t, x, y+fs-2); // text, x, y
+	var textTexture = new THREE.Texture(textCanvas) 
+	textTexture.needsUpdate = true;
+	var textMaterial = new THREE.SpriteMaterial( { map:textTexture} );
+	var textSprite = new THREE.Sprite( textMaterial );
+    return textSprite;
+}
+
+
+
+function addComputersToScene(a) { // area
+	var aa=A.a[A.ai[a]];
+	var s=PREF.cSize; //dimension of cube
+	var floorCubes;// = new THREE.Group();
+	var geometry = new THREE.BoxGeometry(s,s,s);
+	var material; 
+	var mesh;
+	var s=PREF.cubeSize/2;
+	var maxPerRow=2;
+	var curRow=0;
+	var curXOff=0;
+	var curZOff=0;
+	var step=1;
+	var statusColour=PREF.statusColour;
+	var rMax=0;
+	var cMax=0;
+	var cStep=step;
+	var rStep=step;
+	var comp;
+	var compId;
+	var group;
+	
+	floorCubes = new THREE.Group();
+	PCs=areas[A.ai[a]].cs;  	
+	curRow=0;
+	curXOff=0;
+	curZOff=0;
+	c=PCs.length
+	cMax=aa.cols;
+	rMax=aa.rows;
+	cStep=(aa.w-(aa.border*2))/(cMax-1);
+	rStep=(aa.l-(aa.border*2))/(rMax-1);
+    var COFF=((aa.cols+1)*PREF.cGap)/2;
+    var ROFF=((aa.rows+1)*PREF.cGap)/2;
+
+	for ( var i = 0; i < c; i ++ ) { // c=PCs.length
+	    comp=A.c[PCs[i]];
+		material =  new THREE.MeshLambertMaterial( { color:statusColour[comp.status], shading: THREE.FlatShading } );
+		mesh = new THREE.Mesh( geometry, material );
+		mesh.position.x = (comp.c*PREF.cGap)-COFF+aa.cx; // c is column
+		mesh.position.z = (comp.r*PREF.cGap)-ROFF+aa.cy; // r is row
+		mesh.position.y=(aa.floor * floorYScale)+(s)+PREF.floorGap;
+		floorCubes.add(mesh);
+		A.c[comp.name].id=mesh.id;
+		targetList.push(mesh);
+	}
+	
+	floorCubes.rotation.y = (Math.PI/180) * aa.rotation; // use - 
+	floorCubes.position.x = aa.x;
+	floorCubes.position.z = aa.yz;
+	
+	floorCubes.position.x+=aa.xro*(Math.cos(DEGREE*aa.rotation))-aa.yro*(Math.sin(DEGREE*aa.rotation));
+	floorCubes.position.z+=aa.xro*(Math.sin(DEGREE*aa.rotation))+aa.yro*(Math.cos(DEGREE*aa.rotation));
+	floorCubes.rotation.y+= DEGREE*aa.ro;	
+
+
+	floorCubes.name=aa.code;
+	scene.add(floorCubes);
+	computers.push(floorCubes);
+	floorCubes.visible=SHOWcomputers;
+	group=scene.getObjectByName(aa.code);
+	
+	if(VERBOSE) {
+		var ccube=new THREE.Mesh( new THREE.BoxGeometry(s*10,s*10,s*10), new THREE.MeshLambertMaterial( { color:0xffffff, shading: THREE.FlatShading } ));
+		ccube.position.set(group.position.x,group.position.y,group.position.z);
+		scene.add(ccube);
+	}
+	addLabelArea(aa.name,group.position.x,group.position.y+10,group.position.z,60,256,false,24);
+
+	var aOff={x:0,y:2,z:0,r:aa.rotation,ro:aa.ro}; // calculate xyz offset due to floorCubes rotation and pass to aaLabel
+	for ( var i = 0; i < c; i ++ ) { // c=PCs.length
+		comp=A.c[PCs[i]];		//console.log(comp.name);
+		compId=A.c[comp.name].id;
+		addLabelComputer(comp.name,scene.getObjectById(compId),group,{ss:128,fs:18,b:false,s:8,yo:2.1},aOff);
+	}
+	return A.a[A.ai[a]].name+': added '+c+' computers to scene';				
+}
+
+function doFloorCubes(f,pcs) {
+	var PCs=pcs;
+	if(f) {
+	var s=2; //dimension of cube
+	var floorCubes;// = new THREE.Group();
+	var geometry = new THREE.BoxGeometry( s, s, s );
+	var material; // =  new THREE.MeshLambertMaterial( { color:0xff0000, shading: THREE.FlatShading } );
+	var mesh;
+	var s=PREF.cubeSize/2;
+	var c=PCs.length; //testing so show same cubes on each floor
+	var maxPerRow=2;
+	var curRow=0;
+	var curXOff=0;
+	var curZOff=0;
+	var step=5;
+	var statusColour={Used:0x00ff00,Free:0xff0000}
+	var rMax=0;
+	var cMax=0;
+	var cStep=step;
+	var rStep=step;
+	
+	for ( var j = 0; j < areas.length; j ++ ) {
+	   floorCubes = new THREE.Group();
+	   a=areas[j];
+	   curRow=0;
+	   curXOff=0;
+	   curZOff=0;
+	   
+	   // find cMax and rMax
+	   for ( var i = 0; i < c; i ++ ) {
+		cMax=PCs[i].c>cMax?PCs[i].c:cMax;
+		rMax=PCs[i].r>rMax?PCs[i].r:rMax;
+	   }
+	   cStep=(a.w-(a.border*2))/(cMax-1);
+	   rStep=(a.l-(a.border*2))/(rMax-1);
+
+
+	   for ( var i = 0; i < c; i ++ ) { // c=PCs.length
+		 material =  new THREE.MeshLambertMaterial( { color:statusColour[PCs[i].status], shading: THREE.FlatShading } );
+		 mesh = new THREE.Mesh( geometry, material );
+		 mesh.position.x = (((PCs[i].c)-1)*cStep)-(a.w/2)+s; // c is column
+		 mesh.position.z = (((PCs[i].r)-1)*rStep)-(a.l/2)+s; // r is row
+		 mesh.position.y=(a.floor * floorYScale)+(s)+PREF.floorGap;
+		 floorCubes.add(mesh);
+	   }
+	floorCubes.rotation.y = (Math.PI/180) * a.rotation; // use - 
+	floorCubes.position.x = a.x;
+	floorCubes.position.x = a.yz ;
+	floorCubes.name='floorCubes';
+	scene.add(floorCubes);
+	console.log('added floorCubes');
+	}				
+	
+
+	
+   }
+   else {
+	 var o = scene.getObjectByName('floorCubes')
+	 scene.remove(o);
+   }
+}
+			
+function doCubes(f,c,s) {
+  if(f) {
+	var mMesh = new THREE.Geometry();
+	var geometry = new THREE.BoxGeometry( s, s, s );
+	var material =  new THREE.MeshLambertMaterial( { color:0xffffff, shading: THREE.FlatShading } );
+	var mesh = new THREE.Mesh( geometry, material );
+	
+	for ( var i = 0; i < c; i ++ ) {
+		mesh.position.x = ( Math.random() - 0.5 ) * 200;
+		mesh.position.y = ( Math.random() - 0.5 ) * 200;
+		mesh.position.z = ( Math.random() - 0.5 ) * 200;
+		THREE.GeometryUtils.merge(mMesh, mesh);
+	}
+	mMesh.computeFaceNormals();
+	cubes=new THREE.Mesh(mMesh,material);
+	cubes.name='cubes';
+	cubes.matrixAutoUpdate=false;
+	cubes.updateMatrix();
+	scene.add( cubes );	
+  }
+  else {
+	var o = scene.getObjectByName('cubes')
+	scene.remove(o);
+  }
+}
+		   
+function setCubeColour(c){
+	var o;
+	o = scene.getObjectByName('cubes');
+	o.material.color.setHex(c);
+	render();
+}
+
+function doFloors(f,a) { // floor object creator
+  fs=a.length;
+  for(var fl=0;fl<fs;fl++){
+	doAreaBox(f,a[fl]);
+  }
+}
+	
+function showFloors(f) {
+  if(SHOWfloors){
+    for(var i=0;i<planes.length;i++)planes[i].visible=true;
+  }
+  else{
+    for(var i=0;i<planes.length;i++)planes[i].visible=false;
+  }
+}
+
+function showComputers(f) {
+  if(SHOWcomputers){
+    for(var i=0;i<computers.length;i++)computers[i].visible=true;
+  }
+  else{
+    for(var i=0;i<computers.length;i++)computers[i].visible=false;
+  }
+}
+
+function showComputerLabels(f) {
+  if(SHOWcomputerlabels){
+    for(var i=0;i<computerlabels.length;i++)computerlabels[i].visible=true;
+  }
+  else{
+    for(var i=0;i<computerlabels.length;i++)computerlabels[i].visible=false;
+  }
+}
+
+function showAreaLabels(f) {
+  if(SHOWarealabels){
+    for(var i=0;i<arealabels.length;i++)arealabels[i].visible=true;
+  }
+  else{
+    for(var i=0;i<arealabels.length;i++)arealabels[i].visible=false;
+  }
+}
+
+
+	
+function doAreaPlane(f,a) {
+  if(f) {	
+	var geometry = new THREE.PlaneGeometry( a.w, a.l);
+	var material = new THREE.MeshBasicMaterial( {color: PREF.areaColour, side: THREE.DoubleSide} ); 
+	var plane = new THREE.Mesh( geometry, material );
+	plane.rotation.x = Math.PI/2; // rotate from vertical to horizontal
+	plane.rotation.z = DEGREE * a.rotation;	
+	plane.position.x = a.x;
+	plane.position.z = a.yz;
+	plane.position.y = (a.floor * floorXScale);
+	plane.name=a.code;
+	scene.add( plane );
+  }
+  else {
+	var o = scene.getObjectByName(a.code);
+	scene.remove(o);
+  }		  
+}
+			
+function doAreaBox(f,a) {
+  if(f) {	
+	var geometry = new THREE.BoxGeometry( a.w, PREF.floorThickness, a.l);
+	var material = new THREE.MeshBasicMaterial( {color: a.colour, side: THREE.DoubleSide,opacity:PREF.floorOpacity,transparent:true} ); 
+	var plane = new THREE.Mesh( geometry, material );
+	plane.rotation.y = (Math.PI/180) * a.rotation;	
+	plane.position.x = a.x;
+	plane.position.z = a.yz;
+	plane.position.y = (a.floor * floorYScale);
+	plane.position.x+=a.xro*(Math.cos(DEGREE*a.rotation))-a.yro*(Math.sin(DEGREE*a.rotation));
+	plane.position.z+=a.xro*(Math.sin(DEGREE*a.rotation))+a.yro*(Math.cos(DEGREE*a.rotation));
+	plane.rotation.y+= DEGREE*a.ro;	
+	plane.name=a.code;
+	scene.add( plane );
+	planes.push(plane);
+	plane.visible=SHOWfloors;
+  }
+  else {
+	var o = scene.getObjectByName(a.code);
+	scene.remove(o);
+  }		  
+}
+			
+			function update() {
+				keyboard.update();
+				//if (keyboard.down("F")) doMenu('floors',areas);
+				if (keyboard.down("F")) doMenu('floors');
+				if (keyboard.down("C")) doMenu('computers');
+				if (keyboard.down("K")) doMenu('computerlabels');
+				if (keyboard.down("L")) doMenu('arealabels');
+				if (keyboard.down("B")) doMenu('baseGrid');
+				if (keyboard.down("D")) doMenu('HUD');
+				if (keyboard.down("H")) doMenu('HELP');
+				if (keyboard.down("R")) controls.reset();
+				if (keyboard.down("A")) controls.autoRotate=!controls.autoRotate;
+				if (keyboard.down("0")) controls.autoRotateSpeed=0.1;
+				if (keyboard.down("1")) controls.autoRotateSpeed=2.0;
+				if (keyboard.down("2")) controls.autoRotateSpeed=4.0;
+				if (keyboard.down("3")) controls.autoRotateSpeed=8.0;
+				if (keyboard.down("O")) {
+				 camera.position.x=0.0;
+				 camera.position.y=400.0;
+				 camera.position.z=0.0;
+				 }
+				if (keyboard.pressed("up")) {camera.position.y+=10.0;}
+				if (keyboard.pressed("down")) {camera.position.y-=10.0;}
+				/*
+				if (keyboard.down("right")){
+				  camera.position.x+=10;
+				  lookAtX+=10;
+				  camera.lookAt(lookAtX,lookAtY,lookAtZ);
+				}
+				*/				
+			}
+			
+			
+			
+			function animate() {
+				requestAnimationFrame(animate);
+				controls.update();
+				update();
+			}
+		
+			function init() {
+				// toggle full-screen on given key press
+				THREEx.FullScreen.bindKey({ charCode : 'm'.charCodeAt(0) });			
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 1000 );
+			
+				// good overall view
+				camera.position.y = 56; 
+				camera.position.z = 220;
+				camera.position.x = -81;
+				camera.lookAt(0,0,0);
+				
+				controls = new THREE.OrbitControls( camera );
+				controls.damping = 0.2;
+				controls.addEventListener( 'change', render );
+				controls.noKeys=true;
+				keyboard = new KeyboardState();
+				
+				scene = new THREE.Scene();			
+				
+				// add some object for labels
+				var labelsFloors=new THREE.Group();
+				var labelsComputers=new THREE.Group();
+				
+				scene.fog = new THREE.FogExp2( PREF.fogDark, 0.002); //0.002 );
+
+				// world
+				doBaseGrid(DObaseGrid);
+				//doPlane(DOplane);
+				doFloors(DOfloors,areas);
+				//doGroup();
+							
+				// lights
+				light = new THREE.DirectionalLight( 0xffffff );
+				light.position.set( 1, 1, 1 );
+				scene.add( light );
+
+				light = new THREE.DirectionalLight( 0x002288 );
+				light.position.set( -1, -1, -1 );
+				scene.add( light );
+
+				light = new THREE.AmbientLight( 0x222222 );
+				scene.add( light );
+
+				// renderer
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setClearColor( scene.fog.color );
+				renderer.setPixelRatio( window.devicePixelRatio );
+			    renderer.setSize( 400, 400 );
+				
+				container = document.getElementById( 'container' );
+				container = document.getElementById( 'mycanvas' );
+				container.appendChild( renderer.domElement );
+/*
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				stats.domElement.style.zIndex = 100;
+				container.appendChild( stats.domElement );
+*/
+				window.addEventListener( 'resize', onWindowResize, false );
+				doFog(PREF.fogDark);
+				animate();
+                onWindowResize();
+				controls.autoRotateSpeed=0.1;
+				controls.autoRotate=true;
+			}
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				render();
+			}
+
+			function render() {
+				renderer.render( scene, camera );
+				//stats.update();
+			}
+			
+			function doSpikes(f) {
+			  if(f) {
+			  	var mergedMesh = new THREE.Geometry();
+			    var spikes = new THREE.Object3D();
+			    var geometry = new THREE.CylinderGeometry( 0, 4, 30, 4, 1 );
+				var material =  new THREE.MeshLambertMaterial( { color:0xffffff, shading: THREE.FlatShading } );
+				var mesh = new THREE.Mesh( geometry, material );
+				
+				for ( var i = 0; i < 20; i ++ ) {
+					mesh.position.x = ( Math.random() - 0.5 ) * 200;
+					mesh.position.y = 15;
+					mesh.position.z = ( Math.random() - 0.5 ) * 200;
+					THREE.GeometryUtils.merge(mergedMesh, mesh);
+				}
+				mergedMesh.computeFaceNormals();
+				spikes= new THREE.Mesh(mergedMesh,material);
+				spikes.name='spikes';
+				spikes.matrixAutoUpdate=false;
+				spikes.updateMatrix();
+				scene.add( spikes );				
+			  }
+			  else {
+			    var o = scene.getObjectByName('spikes')
+			    scene.remove(o);
+			  }
+			}
+			
+			function doBaseGrid(bg) {
+				if(bg) {
+				  var bgs=PREF.baseGridSize;
+				  var material = new THREE.LineBasicMaterial({ color: PREF.baseColour });
+				  var line_geometry = new THREE.Geometry(); 
+				  var tiles=PREF.baseTiles;
+				  var step=bgs/tiles;
+				  var bgs2=bgs/2;
+				  var x,z;
+				  for(var i=0;i<(tiles+1);i++) {
+				  	line_geometry.vertices.push(
+					  new THREE.Vector3( (i*step)-bgs2, 0, -bgs2 )
+					, new THREE.Vector3( (i*step)-bgs2, 0, bgs-bgs2 ) 
+					, new THREE.Vector3( -bgs2, 0, (i*step)-bgs2 ) 
+					, new THREE.Vector3( bgs-bgs2, 0, (i*step)-bgs2 )
+                  );					
+				  }
+				  var line = new THREE.Line( line_geometry, material,THREE.LinePieces );
+				  line.name='basegrid';
+				  scene.add( line );
+				}
+			   else {
+			      var o = scene.getObjectByName('basegrid')
+			      scene.remove(o);
+			   }
+			}
+			
+			function doFog(c) {
+			 scene.fog = new THREE.FogExp2( c, 0.002 );
+			 renderer.setClearColor(c);
+			}
+			
+			function doPlane(p) {
+			  if(p) {
+			    var geometry = new THREE.PlaneGeometry( 50, 100); //, 1320 );
+			    var material = new THREE.MeshBasicMaterial( {color: 0xffff33, side: THREE.DoubleSide} ); 
+			    var plane = new THREE.Mesh( geometry, material );
+                plane.rotation.x = Math.PI/2;
+                plane.rotation.z = Math.PI/4;				
+				plane.position.y = 20;
+				plane.name='plane';
+			    scene.add( plane );
+			  }
+			  else {
+			    var o = scene.getObjectByName('plane');
+			    scene.remove(o);
+			  }
+			}
+			
+			function doMenu(m,p1,p2) {
+			  switch(m) {
+			    case 'HUD': {
+				  DOHUD = !DOHUD
+				  doHUD(DOHUD);
+				}
+			    break;
+			    case 'HELP': {
+				  DOHELP = !DOHELP
+				  doHELP(DOHELP);
+				}
+			    break;
+			    case 'controls': {
+				  DOcontrols = !DOcontrols
+				  controls.enabled=DOcontrols;
+				}
+			    break;
+			    case 'baseGrid': {
+				  DObaseGrid = !DObaseGrid;
+				  doBaseGrid(DObaseGrid);
+				}
+				break;
+				case 'plane': {
+				  DOplane=!DOplane;
+				  doPlane(DOplane);
+				}
+				break;
+                case 'fog': {doFog(p1);}break;				
+                /*
+				case 'floors': {
+				  DOfloors=!DOfloors;
+				  doFloors(DOfloors,p1);
+				}
+				break;
+				*/
+								
+				case 'floors': {
+				  SHOWfloors=!SHOWfloors;
+				  showFloors(SHOWfloors);
+				}
+				break;					
+				
+				case 'computers': {
+				  SHOWcomputers=!SHOWcomputers;
+				  showComputers(SHOWcomputers);
+				}
+				break;					
+				
+				case 'computerlabels': {
+				  SHOWcomputerlabels=!SHOWcomputerlabels;
+				  showComputerLabels(SHOWcomputerlabels);
+				}
+				break;					
+				
+				case 'arealabels': {
+				  SHOWarealabels=!SHOWarealabels;
+				  showAreaLabels(SHOWarealabels);
+				}
+				break;					
+			}				
+				
+			  render();
+			}
+
+
+// 2d text sprite stuff
+function makeTextSpriteDevVersion(t) {
+    t='abc';
+	var textCanvas = document.createElement('canvas');
+	var textContext = textCanvas.getContext('2d');
+	//var canvasSize = 250;
+	var s=128;
+	var canvasSize = s;
+	textCanvas.width = canvasSize;
+	textCanvas.height = canvasSize;
+	textContext.font = '32px Arial';
+	var metrics = textContext.measureText(t);
+	var textWidth = metrics.width;	
+	textContext.fillStyle='rgba(255,255,255,0.5)';
+	textContext.fill();		
+	textContext.beginPath();
+    textContext.moveTo(0,0);
+    textContext.lineTo(0,s);
+    textContext.lineTo(s,s);
+    textContext.lineTo(s,0);
+    textContext.lineTo(0,0);
+    textContext.closePath();
+    textContext.fill();
+	//textContext.stroke(); 
+	textContext.fillStyle='rgba(255,0,0,0.9)';	
+	textContext.fillText(t, 0, 50); // text, x, y
+	var textTexture = new THREE.Texture(textCanvas) 
+	textTexture.needsUpdate = true;
+	var textMaterial = new THREE.SpriteMaterial( { color:'#ffffff', map: textTexture, useScreenCoordinates: false} );
+	var textSprite = new THREE.Sprite( textMaterial );
+    return textSprite;
+}
+
+
+function onDocumentMouseDown( event ) 
+{
+	// the following line would stop any other event handler from firing
+	// (such as the mouse's TrackballControls)
+	// event.preventDefault();
+	// update the mouse variable
+	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    //HUDfoot.msgTimed('mouse :'+mouse.x+','+mouse.y);
+	// find intersections
+	// create a Ray with origin at the mouse position
+	//   and direction into the scene (camera direction)
+	var vector = new THREE.Vector3( mouse.x, mouse.y, 1 );
+	projector.unprojectVector( vector, camera );
+	var ray = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
+
+	// create an array containing all objects in the scene with which the ray intersects
+	var intersects = ray.intersectObjects( targetList );
+	
+	// if there is one (or more) intersections
+	if ( intersects.length > 0 )
+	{
+		//HUDfoot.msgTimed("Hit @ " + toString( intersects[0].point ) );
+		intersects[0].object.material.color.setHex(0xffff00);
+		HUDmain.msg('object '+intersects[0].object.id+' picked')
+        render();
+	}
+}
+
+function toString(v) { return "[ " + v.x + ", " + v.y + ", " + v.z + " ]"; }
+
+// initialize object to perform world/screen calculations
+projector = new THREE.Projector();
+
+// when the mouse moves, call the given function
+document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+
+
+
+		</script>
+
+	</body>
+</html>
